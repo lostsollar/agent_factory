@@ -1,0 +1,12 @@
+openai
+pyyaml
+httpx
+jinja2
+pypred
+networkx
+xml-python
+termcolor
+streamlit
+langgraph==0.1.19
+# urllib3==1.23
+pydantic==1.10
