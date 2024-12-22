@@ -9,6 +9,7 @@ dir = os.path.dirname(__file__)
 graph_path = os.path.join(dir, "configs/agent.graphml")
 image_path = graph_path.replace(".graphml", ".png")
 
+# [TODO] load_from_graph function needs to update to adapt to NodeConfig
 config = load_from_graphml(graph_path)
 
 with open(os.path.join(dir, "configs/agent.yaml"), "r") as f:

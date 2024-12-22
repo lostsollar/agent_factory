@@ -1,14 +1,11 @@
-import json
 import logging
 from functools import partial
-import re
 from types import ModuleType
 from typing import (
     Annotated,
     Dict,
     List,
     Optional,
-    Set,
     Text,
     Union,
 )
@@ -19,7 +16,7 @@ from termcolor import colored
 from operator import add
 
 from . import nodes as default_nodes
-from .utils import chat, create_dynamic_class, function_exists, predicate, render
+from .utils import create_dynamic_class, predicate
 
 
 logging.basicConfig(
@@ -45,13 +42,11 @@ class Graph:
         node_module: ModuleType = None,
         edge_module: ModuleType = None,
         type_dict: Dict = {},
-        chat_func: callable = chat,
         saver: BaseCheckpointSaver = MemorySaver(),
     ):
         self.node_module = node_module
         self.edge_module = edge_module
         self.type_dict = TYPE_DICT | type_dict
-        self.chat = chat_func
 
         if "main" in config:
             scheduler = self.build_graph_scheduler(config)
@@ -116,21 +111,15 @@ class Graph:
 
         workflow = StateGraph(self.State)
 
-        nodes = {}
+        nodes = set()
         edges = {}
         for c in nodes_config:
-            node_name = c["label"]
-            func = partial(
-                self._node,
-                node_name=node_name,
-                **{
-                    k: v
-                    for k, v in c.items()
-                    if k in {"model", "field", "utter", "jinja", "template", "function"}
-                },
+            node_config = default_nodes.NodeConfig.parse_obj(c)
+            node = default_nodes.Node.create(
+                node_config, [self.node_module, default_nodes]
             )
-            workflow.add_node(node_name, func)
-            nodes[node_name] = func
+            workflow.add_node(node.name, node.__call__)
+            nodes.add(node.name)
 
             if "next" in c:
                 next_path_map = self._next_path_map(c["next"])
@@ -140,9 +129,9 @@ class Graph:
                     path_map = next_path_map
 
                 workflow.add_conditional_edges(
-                    node_name, partial(self._path, next=c["next"]), path_map
+                    node.name, partial(self._path, next=c["next"]), path_map
                 )
-                edges[node_name] = set(next_path_map.keys())
+                edges[node.name] = set(next_path_map.keys())
 
         for edge in edges_config:
             sources = edge["source"]
@@ -159,7 +148,7 @@ class Graph:
             ):
                 continue
 
-            nodes[k] = v
+            nodes.add(k)
             workflow.add_node(k, v)
 
         # 如果source有多个节点，必须先将source中的每个节点add_node，然后再add_edge，否则会报错
@@ -167,7 +156,7 @@ class Graph:
             workflow.add_edge(edge["source"], edge["target"])
 
         targets = set().union(*edges.values())
-        for n in nodes.keys():
+        for n in nodes:
             if n not in targets:
                 workflow.set_entry_point(n)
             if n not in edges:
@@ -179,85 +168,6 @@ class Graph:
             graph = workflow.compile()
 
         return graph
-
-    def _node(
-        self,
-        state: Dict,
-        node_name: Text,
-        model: Text = None,
-        field: Union[Text | List] = None,
-        utter: Text = None,
-        jinja: Text = None,
-        template: Text = None,
-        function: Union[Dict, Text] = None,
-    ):
-        output = None
-        if utter:
-            if utter == "__EMPTY__":
-                output = ""
-            else:
-                output = utter
-        elif template:
-            template = render(template, **state)
-            if model:
-                output = self.chat(template.format(**state), model=model)
-            else:
-                output = self.chat(template.format(**state))
-
-            vars = re.compile(r"\{(\w+)\}").findall(template)
-            vars.append("req_id")
-            log_dict = {
-                "sample_type": node_name,
-                "template": template,
-                "output": output,
-                **{v: state[v] for v in vars if v in state},
-            }
-            logger.info(f"[TemplateNode]{json.dumps(log_dict, ensure_ascii=False)}")
-        elif jinja:
-            output = render(jinja, **state)
-        elif function:
-            if isinstance(function, Text):
-                if function == "default":
-                    func_name = node_name
-                else:
-                    func_name = function
-                params = {}
-            else:
-                func_name = function["name"]
-                params = function.get("params", {})
-
-            func = None
-            for m in [self.node_module, default_nodes]:
-                if not m:
-                    continue
-
-                if function_exists(m, func_name):
-                    func = getattr(m, func_name)
-                    break
-
-            assert func, f"Node function [{func_name}] not found."
-
-            output = func(state, **params)
-
-        if field:
-            if isinstance(field, List):
-                if isinstance(output, Text):
-                    output = json.loads(output)
-
-                if isinstance(output, Dict):
-                    output_state = {f: output.get(f) for f in field}
-                elif isinstance(output, List):
-                    output_state = dict(zip(field, output))
-            else:
-                output_state = {field: output}
-        else:
-            output_state = {f"{node_name}_o": output}
-
-        output_state["nodes"] = [node_name]
-
-        logger.info(f"Node - {node_name}: {output_state}")
-
-        return output_state
 
     def _path(self, state: Dict, next: List[Dict]):
 

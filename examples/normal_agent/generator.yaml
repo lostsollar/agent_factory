@@ -1,0 +1,47 @@
+graph:
+  graph_default:
+    query: Text
+    history: List
+    slots: Dict
+
+nodes:
+  - label: step1
+    type: prompt
+    prompt:
+      template: |-
+        现在会给你一个数字，需要你将这个数字+1后输出，比如给你数字1，你要输出2
+
+        现在给你的数字是{{slots.get('nonexistent_joke', 0)}}
+
+  - label: step2
+    type: prompt
+    prompt:
+      template: |-
+        现在会给你一个数字，需要你将这个数字+1后输出，比如给你数字1，你要输出2
+
+        现在给你的数字是{{step1_o}}
+
+  - label: step3
+    type: prompt
+    prompt:
+      template: |-
+        现在会给你一个数字，需要你将这个数字+2后输出，比如给你数字1，你要输出3
+
+        现在给你的数字是{{step1_o}}
+
+  - label: end
+    field: response
+    type: prompt
+    prompt:
+      template: |-
+        根据对话历史，生成一个关于高中学习的问题，对话历史是：
+
+        {{history}}
+
+links:
+  - source: step1
+    target: step2
+  - source: step1
+    target: step3
+  - source: [step2, step3]
+    target: end

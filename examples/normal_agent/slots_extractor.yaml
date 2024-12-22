@@ -1,0 +1,39 @@
+graph:
+  graph_default:
+    history: List
+    query: Text
+
+nodes:
+  - label: generate_joke1
+    field: joke
+    # field: [joke]
+    type: prompt
+    prompt:
+      # enable_json_format: True
+      template: |-
+        讲个笑话
+
+  - label: echo1
+    type: function
+    function:
+      name: echo
+      params:
+        value: joke
+
+  - label: generate_joke2
+    type: prompt
+    prompt:
+      template: |-
+
+  - label: echo2
+    type: function
+    function:
+      name: echo
+      params:
+        value: generate_joke2_o
+
+links:
+  - source: generate_joke1
+    target: echo1
+  - source: generate_joke2
+    target: echo2

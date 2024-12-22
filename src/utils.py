@@ -1,3 +1,4 @@
+import logging
 import re
 import json
 import yaml
@@ -8,6 +9,9 @@ from openai import AzureOpenAI, OpenAI
 from typing import Any, Dict, Text, TypedDict
 from termcolor import colored
 from jinja2 import Environment
+
+
+logger = logging.getLogger(__name__)
 
 
 class ReprMixin:
@@ -123,7 +127,7 @@ def load_from_graphml(path: Text) -> Dict:
     return graph_dict_final
 
 
-def chat(prompt, model=None):
+def chat(prompt, model=None, enable_json_format=False, timeout=5):
     if model == "claude":
         client = OpenAI(
             api_key="xxx",
@@ -140,9 +144,16 @@ def chat(prompt, model=None):
             api_version="2024-02-01",
             azure_endpoint="xx",
         )
+
+        response_format = None
+        if enable_json_format:
+            response_format = {"type": "json_object"}
+
         completion = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
+            response_format=response_format,
+            timeout=timeout,
         )
         res = completion.choices[0].message.content
     return res
@@ -163,3 +174,26 @@ def create_dynamic_class(class_name: Text, attrs: Dict[str, Any]):
     DynamicClass.__annotations__ = attrs
 
     return DynamicClass
+
+
+def extract_json_object(content: Text):
+    if not content:
+        raise json.JSONDecodeError(
+            msg="Could not find JSON str in LLM's result.", doc=content, pos=0
+        )
+    logger.info("LLM's original result: [%s]", content)
+
+    json_str = content
+    if "```json" in content:
+        json_patten = r"```json\s*([^`]+)```"
+        matches = re.findall(json_patten, content, re.DOTALL)
+        if len(matches) > 0:
+            json_str = matches[0]
+    try:
+        parsed_json = json.loads(json_str)
+        logger.info("llm' result have been parsed correctly!")
+    except json.JSONDecodeError as e:
+        parsed_json = {}
+        logger.info("could not parse JSON string: [%s], Error was: %s", content, str(e))
+
+    return parsed_json
