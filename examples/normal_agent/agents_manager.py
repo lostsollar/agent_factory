@@ -6,8 +6,8 @@ from enum import Enum
 from typing import Text
 from types import ModuleType
 
-from . import nodes
-from ...src import Graph
+from examples.normal_agent import nodes
+from src import Graph
 
 
 logger = logging.getLogger(__name__)
